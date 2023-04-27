@@ -1,6 +1,9 @@
 import os
 import time
 import requests
+from PIL import Image
+from io import BytesIO
+from datetime import datetime
 
 # Replace with your camera's IP address and port
 camera_ip = "http://172.23.0.178:8080"
@@ -67,7 +70,19 @@ for file_url in file_urls:
 
             if response.ok:
                 # Save the downloaded file to the local directory
-                local_file_path = os.path.join(download_dir, file_name)
+
+                #Pull the EXIF data to get the file mod time
+                img = Image.open(BytesIO(response.content))
+                exif_data = img._getexif()
+                date_string = exif_data[36867] #DateTimeOriginal
+                date_obj = datetime.strptime(date_string, "%Y:%m:%d %H:%M:%S")
+                date_dir = os.path.join(download_dir, date_obj.strftime("%Y%m%d"))
+
+                if not os.path.exists(date_dir):
+                    #If the date directory doesn't exist, make it
+                    os.makedirs(date_dir)
+
+                local_file_path = os.path.join(date_dir, file_name)
                 with open(local_file_path, "wb") as file:
                     file.write(response.content)
 
