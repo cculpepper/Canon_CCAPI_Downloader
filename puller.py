@@ -4,6 +4,7 @@ import requests
 from PIL import Image
 from io import BytesIO
 from datetime import datetime
+import subprocess
 
 # Replace with your camera's IP address and port
 camera_ip = "http://172.23.0.178:8080"
@@ -14,6 +15,16 @@ download_dir = "Downloaded_photos"
 
 # File to track downloaded files
 downloaded_files_list = "downloaded_files.txt"
+
+
+
+def get_video_creation_date(file_path):
+    #Used to pull creation dates of videos, no EXIF data there
+
+    ffprobe_command = f"ffprobe -v error -select_streams v:0 -show_entries stream_tags=creation_time -of default=noprint_wrappers=1:nokey=1 -i {file_path}"
+    date_string = subprocess.check_output(ffprobe_command, shell=True).decode("utf-8").strip()
+    date_object = datetime.strptime(date_string, "%Y-%m-%dT%H:%M:%S.%fZ")
+    return date_object
 
 # Check if the camera is online and responsive
 try:
@@ -69,15 +80,23 @@ for file_url in file_urls:
             response = requests.get(file_url)
 
             if response.ok:
-                # Save the downloaded file to the local directory
+                print("Got OK, Downloaded!")
 
-                #Pull the EXIF data to get the file mod time
-                img = Image.open(BytesIO(response.content))
-                exif_data = img._getexif()
-                date_string = exif_data[36867] #DateTimeOriginal
-                date_obj = datetime.strptime(date_string, "%Y:%m:%d %H:%M:%S")
-                date_dir = os.path.join(download_dir, date_obj.strftime("%Y%m%d"))
+                if file_name.lower().endswith(('.jpg', '.jpeg')):
+                    # Save the downloaded file to the local directory
+                    img = Image.open(BytesIO(response.content))
+                    exif_data = img._getexif()
+                    date_string = exif_data[36867]  # 36867 is the tag for DateTimeOriginal
+                    date_object = datetime.strptime(date_string, "%Y:%m:%d %H:%M:%S")
+                elif file_name.lower().endswith('.mp4'):
+                    local_file_path = os.path.join(download_dir, file_name)  # Temporarily save the video file
+                    with open(local_file_path, "wb") as file:
+                        file.write(response.content)
+                    date_object = get_video_creation_date(local_file_path)
+                    #Kind of jank, and will write to a file, but whatever
+                    os.remove(local_file_path)  # Remove the temporary video file after getting the creation date
 
+                date_dir = os.path.join(download_dir, date_object.strftime("%Y%m%d"))
                 if not os.path.exists(date_dir):
                     #If the date directory doesn't exist, make it
                     os.makedirs(date_dir)
